@@ -1,0 +1,33 @@
+[
+    {
+      "ControlId": "IAM.6",
+      "Disabled": [ "ALL" ],
+      "DisabledReason": "We use virtual MFA"
+    },
+    {
+      "ControlId": "CloudTrail.5",
+      "Disabled": [ "ALL" ],
+      "DisabledReason": "We are not monitoring CT at Organization level"
+    },
+    {
+      "ControlId": "CloudTrail.6",
+      "Disabled": ["123456789012", "123456789089", "123456789076"],
+      "DisabledReason": "We are not monitoring CT at Organization level"
+    },
+    {
+      "ControlId": "CloudTrail.7",
+      "Enabled": ["123456789012", "123456789089", "123456789076"],
+      "DisabledReason": ""
+    },
+    {
+      "ControlId": "CloudTrail.8",
+      "Enabled": ["123456789012", "123456789089", "123456789076"],
+      "DisabledReason": ""
+    },
+    {
+      "ControlId": "IAM.9",
+      "Enabled": ["ALL"],
+      "DisabledReason": "Global resource control, should be enabled only in us-east-1",
+      "Region": ["us-east-1"]
+  }
+]

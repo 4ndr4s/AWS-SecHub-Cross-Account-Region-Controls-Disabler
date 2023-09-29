@@ -1,0 +1,402 @@
+AWSTemplateFormatVersion: '2010-09-09'
+Transform: AWS::Serverless-2016-10-31
+Description: Security Hub Updater
+
+Parameters:
+  Path:
+    Type: String
+    Default: "/"
+    Description: Path for IAM Role
+  MemberIAMRoleName:
+    Type: String
+    Default: "securityhub-UpdateControl-role"
+    Description: Name of IAM Role in member account
+  MemberIAMRolePath:
+    Type: String
+    Default: "/"
+    Description: Path of IAM Role in member account
+  Schedule:
+    Type: String
+    Default: "rate(1 day)"
+    Description: The scheduling expression that determines when and how often the SecurityHubUpdater runs.
+  EventTriggerState:
+    Type: String
+    Default: "DISABLED"
+    AllowedValues: ["ENABLED", "DISABLED"]
+    Description: The state of the SecurityHubUpdateEvent rule monitoring Security Hub control updates and triggering the state machine
+  SecurityHubAdminAccountId:
+    Type: String
+    Description: Security Hub Admin Account ID.
+  # TODO - Subscriptions: If you need more e-mail subscriptions, add another parameter. Also, add another condition in the "Conditions" section and adapt the list of subscriptions in the StateMachineFailureSNSTopic resource accordingly.
+  NotificationEmail1:
+    Type: String
+    Default: ""
+    Description: Optional - E-mail address to receive notification if the state machine fails.
+  NotificationEmail2:
+    Type: String
+    Default: ""
+    Description: Optional - E-mail address to receive notification if the state machine fails.
+  NotificationEmail3:
+    Type: String
+    Default: ""
+    Description: Optional - E-mail address to receive notification if the state machine fails.
+
+Conditions:
+  # TODO - Subscriptions: Add another "!Not [!Equals [...]]" Condition into the list for each additional email parameter added.
+  NotificationEmail1Exists: !Not [!Equals [!Ref NotificationEmail1, ""]]
+  NotificationEmail2Exists: !Not [!Equals [!Ref NotificationEmail2, ""]]
+  NotificationEmail3Exists: !Not [!Equals [!Ref NotificationEmail3, ""]]
+
+Resources:
+
+  AccountExceptions:
+    Type: AWS::DynamoDB::Table
+    Properties:
+      AttributeDefinitions:
+        -
+          AttributeName: "ControlId"
+          AttributeType: "S"
+      BillingMode: "PAY_PER_REQUEST"
+      KeySchema:
+        -
+          AttributeName: "ControlId"
+          KeyType: "HASH"
+      StreamSpecification:
+        StreamViewType: KEYS_ONLY
+  
+  RegionsDynamoDBTable:
+    Type: AWS::DynamoDB::Table
+    Properties:
+      AttributeDefinitions:
+        -
+          AttributeName: "AccountId"
+          AttributeType: "S"
+      BillingMode: "PAY_PER_REQUEST"
+      KeySchema:
+        -
+          AttributeName: "AccountId"
+          KeyType: "HASH"
+
+  LambdaExecutionRole:
+    Type: AWS::IAM::Role
+    Properties:
+      Path: !Ref Path
+      AssumeRolePolicyDocument:
+        Statement:
+        - Action:
+          - sts:AssumeRole
+          Effect: Allow
+          Principal:
+            Service:
+            - lambda.amazonaws.com
+        Version: '2012-10-17'
+      ManagedPolicyArns:
+      - arn:aws:iam::aws:policy/service-role/AWSLambdaBasicExecutionRole
+      Policies:
+      - PolicyDocument:
+          Version: '2012-10-17'
+          Statement:
+            - Effect: Allow
+              Action: sts:AssumeRole
+              Resource:
+                - !Sub "arn:aws:iam::*:role${MemberIAMRolePath}${MemberIAMRoleName}"
+            - Effect: Allow
+              Action:
+                - securityhub:Get*
+                - securityhub:List*
+                - securityhub:Describe*
+                - organizations:ListAccounts
+              Resource: "*"
+            - Effect: Allow
+              Action:
+                - dynamodb:Query
+                - dynamodb:Scan
+                - dynamodb:DescribeTable
+              Resource: 
+                - !GetAtt AccountExceptions.Arn
+                - !GetAtt RegionsDynamoDBTable.Arn
+            - Effect: Allow
+              Action:
+                - dynamodb:DescribeStream
+                - dynamodb:GetRecords
+                - dynamodb:GetShardIterator
+                - dynamodb:ListStreams
+              Resource: "*"
+            - Effect: Allow
+              Action:
+                - states:StartExecution
+                - states:ListExecutions
+              Resource: "*"
+        PolicyName: SecurityHubUpdateStandardsControlPolicyForLambda
+
+  CheckResult:
+    Type: AWS::Serverless::Function
+    Properties:
+      CodeUri: ../src/CheckResult
+      Description: Checks results of UpdateMember executions
+      Handler: index.lambda_handler
+      Role:
+        Fn::GetAtt:
+        - LambdaExecutionRole
+        - Arn
+      Runtime: python3.8
+      Timeout: 300
+
+  GetMembers:
+    Type: AWS::Serverless::Function
+    Properties:
+      CodeUri: ../src/GetMembers
+      Description: Get list of member accounts from SecurityHub
+      Handler: index.lambda_handler
+      Role:
+        Fn::GetAtt:
+        - LambdaExecutionRole
+        - Arn
+      Runtime: python3.8
+      Timeout: 300
+      Environment:
+        Variables:
+          Schedule: !Ref Schedule
+          DynamoDB: !Ref AccountExceptions
+          SecHubAdminAccount: !Ref SecurityHubAdminAccountId
+
+  UpdateMember:
+    Type: AWS::Serverless::Function
+    Properties:
+      CodeUri: ../src/UpdateMember
+      Description: Update the state of SecurityHub findings in all member accounts
+      Handler: index.lambda_handler
+      Role:
+        Fn::GetAtt:
+        - LambdaExecutionRole
+        - Arn
+      Runtime: python3.8
+      MemorySize: 1024
+      Timeout: 900
+      Environment:
+        Variables:
+          MemberRole: !Sub "arn:aws:iam::${SecurityHubAdminAccountId}:role${MemberIAMRolePath}${MemberIAMRoleName}"
+          RegionsDynamoDB: !Ref RegionsDynamoDBTable
+
+  SecurityHubMemberUpdateStateMachineRole:
+    Type: AWS::IAM::Role
+    Properties:
+      AssumeRolePolicyDocument:
+        Statement:
+          - Action:
+              - sts:AssumeRole
+            Effect: Allow
+            Principal:
+              Service:
+                - states.amazonaws.com
+        Version: "2012-10-17"
+      Policies:
+        - PolicyName: InvokeLambdaPolicyForStateMachines
+          PolicyDocument:
+            Version: 2012-10-17
+            Statement:
+              - Sid: InvokeLambdas
+                Effect: Allow
+                Action:
+                  - "lambda:InvokeFunction"
+                  - "lambda:Get*"
+                  - "lambda:List*"
+                Resource:
+                  - !GetAtt UpdateMember.Arn
+                  - !GetAtt GetMembers.Arn
+                  - !GetAtt CheckResult.Arn
+              - Sid: PublishSNS
+                Effect: Allow
+                Action:
+                  - "sns:Publish"
+                Resource: !Ref StateMachineFailureSNSTopic
+
+  SecurityHubMemberUpdate:
+    Type: AWS::Serverless::StateMachine
+    Properties:
+      Role: !GetAtt SecurityHubMemberUpdateStateMachineRole.Arn
+      DefinitionUri: ./stateMachine.json
+      DefinitionSubstitutions:
+        UpdateMember: !GetAtt UpdateMember.Arn
+        GetMembers: !GetAtt GetMembers.Arn
+        CheckResult: !GetAtt CheckResult.Arn
+        StateMachineFailureSNSTopic: !Ref StateMachineFailureSNSTopic
+      Events:
+        Scheduled:
+          Type: Schedule
+          Properties:
+            Input: '{"scheduled": "True"}'
+            Schedule: !Ref Schedule
+
+  SecurityHubUpdatedEvent:
+    Type: AWS::Events::Rule
+    Properties:
+      Description: This rule monitors Security Hub and executes the state machine if a Security Hub control was updated
+      State: !Ref EventTriggerState
+      RoleArn: !GetAtt SecurityHubUpdatedEventRole.Arn
+      Targets:
+      - Arn: !Ref SecurityHubMemberUpdate
+        Id: SecurityHubUpdaterStateMachine
+        RoleArn: !GetAtt SecurityHubUpdatedEventRole.Arn
+      EventPattern:
+        source:
+          - aws.securityhub
+        detail-type:
+          - AWS API Call via CloudTrail
+        detail:
+          eventSource:
+            - securityhub.amazonaws.com
+          eventName:
+            - UpdateStandardsControl
+            - BatchDisableStandards
+            - BatchEnableStandards
+
+  SecurityHubUpdatedEventRole:
+    Type: AWS::IAM::Role
+    Properties:
+      Path: !Ref Path
+      AssumeRolePolicyDocument:
+        Statement:
+        - Action:
+          - sts:AssumeRole
+          Effect: Allow
+          Principal:
+            Service:
+            - events.amazonaws.com
+        Version: '2012-10-17'
+      Policies:
+      - PolicyDocument:
+          Version: '2012-10-17'
+          Statement:
+            - Effect: Allow
+              Action:
+                - states:StartExecution
+              Resource: !Ref SecurityHubMemberUpdate
+        PolicyName: StartStateMachine
+
+  StateMachineFailureSNSTopic:
+    Type: AWS::SNS::Topic
+    Properties:
+      Subscription:
+      # TODO - Subscriptions: Add another "!If" statement into the list for each additional email parameter added.
+        - !If
+          - NotificationEmail1Exists
+          - 
+            Endpoint: !Ref NotificationEmail1
+            Protocol: email
+          - !Ref AWS::NoValue
+        - !If
+          - NotificationEmail2Exists
+          - 
+            Endpoint: !Ref NotificationEmail2
+            Protocol: email
+          - !Ref AWS::NoValue
+        - !If
+          - NotificationEmail3Exists
+          - 
+            Endpoint: !Ref NotificationEmail3
+            Protocol: email
+          - !Ref AWS::NoValue
+
+  StateMachineFailureSNSTopicPolicyEventRule:
+    Type: "AWS::SNS::TopicPolicy"
+    Properties:
+      PolicyDocument:
+        Statement:
+          - Sid: PublishMessage
+            Effect: "Allow"
+            Principal:
+              AWS: "*"
+            Action:
+              - "sns:Publish"
+            Resource: !Ref StateMachineFailureSNSTopic
+            Condition:
+              StringEquals:
+                AWS:PrincipalArn: !GetAtt SecurityHubMemberUpdateStateMachineRole.Arn
+      Topics:
+        - !Ref StateMachineFailureSNSTopic
+
+  StateMachineLambdaTrigger:
+    Type: AWS::Lambda::Function
+    Properties: 
+      Code:
+        ZipFile: |
+          import boto3
+          import os
+          import logging
+
+          logger = logging.getLogger()
+          logger.setLevel(logging.INFO)
+          state_machine_arn = os.environ.get('StateMachineArn')
+          region = os.environ.get('AWS_Region')
+          table_name = os.environ.get('RegionsDynamoDB')
+
+
+          def lambda_handler(event, context):
+              
+              # Initialize the DDB client
+              db_client = boto3.client('dynamodb', region_name=region)
+              db_status = db_client.describe_table(TableName=table_name)['Table']['TableStatus']
+              if db_status == 'ACTIVE':
+                # Initialize the Step Functions client
+                client = boto3.client('stepfunctions', region_name=region)
+                # Start the execution of the state machine
+                execution_response = client.list_executions(
+                  stateMachineArn=state_machine_arn,
+                  statusFilter='RUNNING'
+                  )['executions']
+                if execution_response:
+                  logger.info("%s State Machine execution in progress, skipping new execution", state_machine_arn)
+                else:
+                  response = client.start_execution(
+                      stateMachineArn=state_machine_arn,
+                      input='{}'  # Replace with the input data for your state machine (JSON format)
+                  )
+
+                  execution_arn = response['executionArn']
+
+                  return {
+                      'statusCode': 200,
+                      'body': f'Started execution: {execution_arn}'
+                  }
+                  logger.info("%s", return)
+              else:
+                logger.info("DDB: %s %s skipping state machine start execution phase", table_name, db_status)
+
+      
+      Description: This lambda works as State Machine trigger after a new item is added to DDB.
+      Environment:
+        Variables:
+          StateMachineArn: !GetAtt SecurityHubMemberUpdate.Arn
+          AWS_Region: !Ref AWS::Region
+          RegionsDynamoDB: !Ref RegionsDynamoDBTable
+      FunctionName: StateMachineLambdaTrigger
+      Handler: index.lambda_handler
+      MemorySize: 128
+      Runtime: python3.8
+      Role: !GetAtt 'LambdaExecutionRole.Arn'
+      Timeout: 240
+
+  StateMachineDynamoDBEvent:
+    Type: AWS::Lambda::EventSourceMapping
+    Properties:
+      Enabled: True
+      EventSourceArn:
+        Fn::GetAtt: [ AccountExceptions , StreamArn ]
+      FunctionName: StateMachineLambdaTrigger
+      StartingPosition: LATEST
+    DependsOn: StateMachineLambdaTrigger
+
+Outputs:
+  StateMachineArn:
+    Value: !Ref SecurityHubMemberUpdate
+  CheckResultLambda:
+    Value: !Ref CheckResult
+  GetMembersLambda:
+    Value: !Ref GetMembers
+  UpdateMemberLambda:
+    Value: !Ref UpdateMember
+  SNSTopic:
+    Value: !Ref StateMachineFailureSNSTopic
+  AccountExceptionsDynamoDBTableName:
+    Value: !Ref AccountExceptions

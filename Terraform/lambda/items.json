@@ -1,0 +1,237 @@
+[
+    {
+      "ControlId": "GuardDuty.1",
+      "Disabled": [ "ALL" ],
+      "DisabledReason": "We use various other products across the deployments, Jira Ticket CLDS-73"
+    },
+    {
+      "ControlId": "IAM.6",
+      "Disabled": [ "ALL" ],
+      "DisabledReason": "We use virtual MFA, Jira Ticket CLDS-26"
+    },
+    {
+      "ControlId": "CloudTrail.5",
+      "Disabled": [ "ALL" ],
+      "DisabledReason": "We are not monitoring CT at Org level, Jira Ticket CLDS-35"
+    },
+    {
+      "ControlId": "CloudWatch.1",
+      "Disabled": [ "ALL" ],
+      "DisabledReason": "Lacework alerts on this, Jira Ticket CLDS-64"
+    },
+    {
+      "ControlId": "CloudWatch.2",
+      "Disabled": [ "ALL" ],
+      "DisabledReason": "Lacework alerts on this, Jira Ticket CLDS-64"
+    },
+    {
+      "ControlId": "CloudWatch.3",
+      "Disabled": [ "ALL" ],
+      "DisabledReason": "short-term disablement, Jira Ticket CLDS-64"
+    },
+    {
+      "ControlId": "CloudWatch.4",
+      "Disabled": [ "ALL" ],
+      "DisabledReason": "short-term disablement, Jira Ticket CLDS-64"
+    },
+    {
+      "ControlId": "CloudWatch.5",
+      "Disabled": [ "ALL" ],
+      "DisabledReason": "short-term disablement, Jira Ticket CLDS-64"
+    },
+    {
+      "ControlId": "CloudWatch.6",
+      "Disabled": [ "ALL" ],
+      "DisabledReason": "short-term disablement, Jira Ticket CLDS-64"
+    },
+    {
+      "ControlId": "CloudWatch.7",
+      "Disabled": [ "ALL" ],
+      "DisabledReason": "short-term disablement, Jira Ticket CLDS-64"
+    },
+    {
+      "ControlId": "CloudWatch.8",
+      "Disabled": [ "ALL" ],
+      "DisabledReason": "short-term disablement, Jira Ticket CLDS-64"
+    },
+    {
+      "ControlId": "CloudWatch.9",
+      "Disabled": [ "ALL" ],
+      "DisabledReason": "short-term disablement, Jira Ticket CLDS-64"
+    },
+    {
+      "ControlId": "CloudWatch.10",
+      "Disabled": [ "ALL" ],
+      "DisabledReason": "short-term disablement, Jira Ticket CLDS-64"
+    },
+    {
+      "ControlId": "CloudWatch.11",
+      "Disabled": [ "ALL" ],
+      "DisabledReason": "short-term disablement, Jira Ticket CLDS-64"
+    },
+    {
+      "ControlId": "CloudWatch.12",
+      "Disabled": [ "ALL" ],
+      "DisabledReason": "short-term disablement, Jira Ticket CLDS-64"
+    },
+    {
+      "ControlId": "CloudWatch.13",
+      "Disabled": [ "ALL" ],
+      "DisabledReason": "short-term disablement, Jira Ticket CLDS-64"
+    },
+    {
+      "ControlId": "CloudWatch.14",
+      "Disabled": [ "ALL" ],
+      "DisabledReason": "short-term disablement, Jira Ticket CLDS-64"
+    },
+    {
+      "ControlId": "Account.1",
+      "Enabled": ["ALL"],
+      "DisabledReason": "Global resource control, should be enabled only in us-east-1, Jira Ticket CLDS-58",
+      "Region": ["us-east-1"]
+    },
+    {
+      "ControlId": "Account.2",
+      "Enabled": ["ALL"],
+      "DisabledReason": "Jira Ticket CLDS-66",
+      "Region": ["us-east-1"]
+    },
+    {
+      "ControlId": "IAM.1",
+      "Enabled": ["ALL"],
+      "DisabledReason": "Global resource control, should be enabled only in us-east-1, Jira Ticket CLDS-56",
+      "Region": ["us-east-1"]
+    },
+    {
+      "ControlId": "IAM.2",
+      "Enabled": ["ALL"],
+      "DisabledReason": "Global resource control, should be enabled only in us-east-1, Jira Ticket CLDS-57",
+      "Region": ["us-east-1"]
+    },
+    {
+      "ControlId": "IAM.3",
+      "Enabled": ["ALL"],
+      "DisabledReason": "Global resource control, should be enabled only in us-east-1, Jira Ticket CLDS-58",
+      "Region": ["us-east-1"]
+    },
+    {
+      "ControlId": "IAM.4",
+      "Enabled": ["ALL"],
+      "DisabledReason": "Global resource control, should be enabled only in us-east-1, Jira Ticket CLDS-58",
+      "Region": ["us-east-1"]
+    },
+    {
+      "ControlId": "IAM.5",
+      "Enabled": ["ALL"],
+      "DisabledReason": "Global resource control, should be enabled only in us-east-1, Jira Ticket CLDS-58",
+      "Region": ["us-east-1"]
+    },
+    {
+      "ControlId": "IAM.7",
+      "Enabled": ["ALL"],
+      "DisabledReason": "Global resource control, should be enabled only in us-east-1, Jira Ticket CLDS-58",
+      "Region": ["us-east-1"]
+    },
+    {
+      "ControlId": "IAM.8",
+      "Enabled": ["ALL"],
+      "DisabledReason": "Global resource control, should be enabled only in us-east-1, Jira Ticket CLDS-58",
+      "Region": ["us-east-1"]
+    },
+    {
+      "ControlId": "IAM.9",
+      "Enabled": ["ALL"],
+      "DisabledReason": "Global resource control, should be enabled only in us-east-1, Jira Ticket CLDS-58",
+      "Region": ["us-east-1"]
+    },
+    {
+      "ControlId": "IAM.10",
+      "Enabled": ["ALL"],
+      "DisabledReason": "Global resource control, should be enabled only in us-east-1, Jira Ticket CLDS-58",
+      "Region": ["us-east-1"]
+    },
+    {
+      "ControlId": "IAM.11",
+      "Enabled": ["ALL"],
+      "DisabledReason": "Global resource control, should be enabled only in us-east-1, Jira Ticket CLDS-66",
+      "Region": ["us-east-1"]
+    },
+    {
+      "ControlId": "IAM.12",
+      "Enabled": ["ALL"],
+      "DisabledReason": "Global resource control, should be enabled only in us-east-1, Jira Ticket CLDS-66",
+      "Region": ["us-east-1"]
+    },
+    {
+      "ControlId": "IAM.13",
+      "Enabled": ["ALL"],
+      "DisabledReason": "Global resource control, should be enabled only in us-east-1, Jira Ticket CLDS-58",
+      "Region": ["us-east-1"]
+    },
+    {
+      "ControlId": "IAM.14",
+      "Enabled": ["ALL"],
+      "DisabledReason": "Global resource control, should be enabled only in us-east-1, Jira Ticket CLDS-66",
+      "Region": ["us-east-1"]
+    },
+    {
+      "ControlId": "IAM.15",
+      "Enabled": ["ALL"],
+      "DisabledReason": "Global resource control, should be enabled only in us-east-1, Jira Ticket CLDS-66",
+      "Region": ["us-east-1"]
+    },
+    {
+      "ControlId": "IAM.16",
+      "Enabled": ["ALL"],
+      "DisabledReason": "Global resource control, should be enabled only in us-east-1, Jira Ticket CLDS-66",
+      "Region": ["us-east-1"]
+    },
+    {
+      "ControlId": "IAM.17",
+      "Enabled": ["ALL"],
+      "DisabledReason": "Global resource control, should be enabled only in us-east-1, Jira Ticket CLDS-66",
+      "Region": ["us-east-1"]
+    },
+    {
+      "ControlId": "IAM.18",
+      "Enabled": ["ALL"],
+      "DisabledReason": "Global resource control, should be enabled only in us-east-1, Jira Ticket CLDS-58",
+      "Region": ["us-east-1"]
+    },
+    {
+      "ControlId": "IAM.19",
+      "Enabled": ["ALL"],
+      "DisabledReason": "Global resource control, should be enabled only in us-east-1, Jira Ticket CLDS-58",
+      "Region": ["us-east-1"]
+    },
+    {
+      "ControlId": "IAM.20",
+      "Enabled": ["ALL"],
+      "DisabledReason": "Global resource control, should be enabled only in us-east-1, Jira Ticket CLDS-58",
+      "Region": ["us-east-1"]
+    },
+    {
+      "ControlId": "IAM.21",
+      "Enabled": ["ALL"],
+      "DisabledReason": "Global resource control, should be enabled only in us-east-1, Jira Ticket CLDS-58",
+      "Region": ["us-east-1"]
+    },
+    {
+      "ControlId": "IAM.22",
+      "Enabled": ["ALL"],
+      "DisabledReason": "Global resource control, should be enabled only in us-east-1, Jira Ticket CLDS-58",
+      "Region": ["us-east-1"]
+    },
+    {
+      "ControlId": "KMS.1",
+      "Enabled": ["ALL"],
+      "DisabledReason": "Global resource control, should be enabled only in us-east-1, Jira Ticket CLDS-58",
+      "Region": ["us-east-1"]
+    },
+    {
+      "ControlId": "KMS.2",
+      "Enabled": ["ALL"],
+      "DisabledReason": "Global resource control, should be enabled only in us-east-1, Jira Ticket CLDS-58",
+      "Region": ["us-east-1"]
+    }
+]
