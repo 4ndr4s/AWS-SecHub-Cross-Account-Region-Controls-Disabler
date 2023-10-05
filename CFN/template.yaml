@@ -61,8 +61,6 @@ Resources:
         -
           AttributeName: "ControlId"
           KeyType: "HASH"
-      StreamSpecification:
-        StreamViewType: KEYS_ONLY
   
   RegionsDynamoDBTable:
     Type: AWS::DynamoDB::Table
@@ -115,18 +113,6 @@ Resources:
               Resource: 
                 - !GetAtt AccountExceptions.Arn
                 - !GetAtt RegionsDynamoDBTable.Arn
-            - Effect: Allow
-              Action:
-                - dynamodb:DescribeStream
-                - dynamodb:GetRecords
-                - dynamodb:GetShardIterator
-                - dynamodb:ListStreams
-              Resource: "*"
-            - Effect: Allow
-              Action:
-                - states:StartExecution
-                - states:ListExecutions
-              Resource: "*"
         PolicyName: SecurityHubUpdateStandardsControlPolicyForLambda
 
   CheckResult:
@@ -315,77 +301,6 @@ Resources:
                 AWS:PrincipalArn: !GetAtt SecurityHubMemberUpdateStateMachineRole.Arn
       Topics:
         - !Ref StateMachineFailureSNSTopic
-
-  StateMachineLambdaTrigger:
-    Type: AWS::Lambda::Function
-    Properties: 
-      Code:
-        ZipFile: |
-          import boto3
-          import os
-          import logging
-
-          logger = logging.getLogger()
-          logger.setLevel(logging.INFO)
-          state_machine_arn = os.environ.get('StateMachineArn')
-          region = os.environ.get('AWS_Region')
-          table_name = os.environ.get('RegionsDynamoDB')
-
-
-          def lambda_handler(event, context):
-              
-              # Initialize the DDB client
-              db_client = boto3.client('dynamodb', region_name=region)
-              db_status = db_client.describe_table(TableName=table_name)['Table']['TableStatus']
-              if db_status == 'ACTIVE':
-                # Initialize the Step Functions client
-                client = boto3.client('stepfunctions', region_name=region)
-                # Start the execution of the state machine
-                execution_response = client.list_executions(
-                  stateMachineArn=state_machine_arn,
-                  statusFilter='RUNNING'
-                  )['executions']
-                if execution_response:
-                  logger.info("%s State Machine execution in progress, skipping new execution", state_machine_arn)
-                else:
-                  response = client.start_execution(
-                      stateMachineArn=state_machine_arn,
-                      input='{}'  # Replace with the input data for your state machine (JSON format)
-                  )
-
-                  execution_arn = response['executionArn']
-
-                  return {
-                      'statusCode': 200,
-                      'body': f'Started execution: {execution_arn}'
-                  }
-                  logger.info("%s", return)
-              else:
-                logger.info("DDB: %s %s skipping state machine start execution phase", table_name, db_status)
-
-      
-      Description: This lambda works as State Machine trigger after a new item is added to DDB.
-      Environment:
-        Variables:
-          StateMachineArn: !GetAtt SecurityHubMemberUpdate.Arn
-          AWS_Region: !Ref AWS::Region
-          RegionsDynamoDB: !Ref RegionsDynamoDBTable
-      FunctionName: StateMachineLambdaTrigger
-      Handler: index.lambda_handler
-      MemorySize: 128
-      Runtime: python3.8
-      Role: !GetAtt 'LambdaExecutionRole.Arn'
-      Timeout: 240
-
-  StateMachineDynamoDBEvent:
-    Type: AWS::Lambda::EventSourceMapping
-    Properties:
-      Enabled: True
-      EventSourceArn:
-        Fn::GetAtt: [ AccountExceptions , StreamArn ]
-      FunctionName: StateMachineLambdaTrigger
-      StartingPosition: LATEST
-    DependsOn: StateMachineLambdaTrigger
 
 Outputs:
   StateMachineArn:

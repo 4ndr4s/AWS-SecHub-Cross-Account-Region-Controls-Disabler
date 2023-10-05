@@ -21,7 +21,7 @@ data "aws_iam_policy_document" "ddb_lambda_policy_doc" {
          "dynamodb:GetItem",
          "dynamodb:UpdateItem"
     ]
-    resources = [var.dynamodb_table_arn]
+    resources = ["arn:aws:dynamodb:us-east-1:${var.SecurityHubAdminAccountId}:table/${var.dynamodb_table_arn}"]
   }
   statement {
     effect = "Allow"
@@ -44,6 +44,16 @@ data "aws_iam_policy_document" "ddb_lambda_policy_doc" {
     ]
 
     resources = ["arn:aws:s3:::${var.s3_bucket}", "arn:aws:s3:::${var.s3_bucket}/*"]
+  }
+  statement {
+    effect = "Allow"
+
+    actions = [
+      "states:StartExecution",
+      "states:ListExecutions"
+    ]
+
+    resources = [var.state_machine_arn]
   }
 }
 

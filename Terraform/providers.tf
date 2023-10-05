@@ -14,7 +14,7 @@ provider "aws" {
 
 terraform {
   backend "s3" {
-    bucket = "securitytooling-terraform-state"
+    bucket = "bucket-name"
     key    = "security_hub_controls/terraform_state"
     region = "us-east-1"
   }

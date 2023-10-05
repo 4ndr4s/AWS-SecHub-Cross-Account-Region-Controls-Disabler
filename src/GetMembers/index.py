@@ -1,11 +1,13 @@
 #!/bin/python
 
 import logging
-import os
+import os, sys
 import boto3
 
 logger = logging.getLogger()
 logger.setLevel(logging.INFO)
+logging.basicConfig(stream=sys.stdout, level=logging.INFO)
+
 DISABLED_REASON = "Exception"
 securityhub_client = None
 organizations_client = None
@@ -24,9 +26,7 @@ def convert_exceptions(response, member_accounts):
             if control["Disabled"]["L"][0]["S"] == "ALL":
                 exceptions[control["ControlId"]["S"]]["Disabled"] = member_accounts
             else:
-                exceptions[control["ControlId"]["S"]]["Disabled"] = [
-                    entry["S"] for entry in control["Disabled"]["L"]
-                ]
+                exceptions[control["ControlId"]["S"]]["Disabled"] = [entry["S"] for entry in control["Disabled"]["L"]]
         except KeyError:
             logger.info('%s: No "Disabled" exceptions', control["ControlId"]["S"])
             exceptions[control["ControlId"]["S"]]["Disabled"] = []
@@ -35,18 +35,14 @@ def convert_exceptions(response, member_accounts):
             if control["Enabled"]["L"][0]["S"] == "ALL":
                 exceptions[control["ControlId"]["S"]]["Enabled"] = member_accounts
             else:
-                exceptions[control["ControlId"]["S"]]["Enabled"] = [
-                    entry["S"] for entry in control["Enabled"]["L"]
-                ]
+                exceptions[control["ControlId"]["S"]]["Enabled"] = [entry["S"] for entry in control["Enabled"]["L"]]
         except KeyError:
             logger.info('%s: No "Enabled" exceptions', control["ControlId"]["S"])
             exceptions[control["ControlId"]["S"]]["Enabled"] = []
 
         try:
             if control["DisabledReason"]["S"] != "":
-                exceptions[control["ControlId"]["S"]]["DisabledReason"] = control[
-                    "DisabledReason"
-                ]["S"]
+                exceptions[control["ControlId"]["S"]]["DisabledReason"] = control["DisabledReason"]["S"]
             else:
                 logger.info(
                     '%s: No "DisabledReason". Replace by "%s"',
@@ -63,6 +59,11 @@ def convert_exceptions(response, member_accounts):
                 DISABLED_REASON,
             )
             exceptions[control["ControlId"]["S"]]["DisabledReason"] = DISABLED_REASON
+        try:
+            if control["Region"] != "":
+                exceptions[control["ControlId"]["S"]]["Region"] = [entry["S"] for entry in control["Region"]["L"]]
+        except KeyError:
+            logger.info('%s: has not "Region" in exceptions', control["ControlId"]["S"])
 
     return exceptions
 
@@ -139,4 +140,3 @@ def lambda_handler(event, context):
         "accounts": member_accounts,
         "exceptions": exceptions,
     }
-

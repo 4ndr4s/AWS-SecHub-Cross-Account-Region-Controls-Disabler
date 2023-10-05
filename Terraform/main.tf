@@ -15,15 +15,26 @@ resource "aws_lambda_function" "process_ddb_lambda" {
   timeout                        = 900
   environment {
         variables = {
-            "DynamoDB"  = var.dynamodb_table
-            "json_file" = "items.json"
+            "ItemsDynamoDB"  = var.items_dynamodb_table
+            "RegionsDynamoDB" = var.regions_dynamodb_table
+            "items_json_file" = "items.json"
+            "accounts_json_file" = "accounts.json"
 
         }
     }
 }
 
+resource "aws_s3_bucket" "items_bucket" {
+  bucket = "${var.bucket_name}-${substr(uuid(), 0, 6)}"
+  lifecycle {
+    ignore_changes        = [bucket]
+    create_before_destroy = true
+  }
+}
+
+
 resource "aws_s3_bucket_notification" "aws-lambda-trigger" {
-  bucket = var.s3_bucket
+  bucket = aws_s3_bucket.items_bucket.id
   lambda_function {
     lambda_function_arn = aws_lambda_function.process_ddb_lambda.arn
     events              = ["s3:ObjectCreated:*"]
@@ -40,16 +51,29 @@ resource "aws_lambda_permission" "ddb_lambda_invoke" {
 }
 
 resource "aws_s3_object" "object_upload" {
-    bucket                 = var.s3_bucket
+    bucket                 = aws_s3_bucket.items_bucket.id
     key                    = "items.json"
     source                 = "lambda/items.json"
     # The filemd5() function is available in Terraform 0.11.12 and later
     # For Terraform 0.11.11 and earlier, use the md5() function and the file() function:
     # etag = "${md5(file("path/to/file"))}"
     etag = filemd5("lambda/items.json")
+    depends_on = [aws_s3_bucket.items_bucket]
 }
 
-resource "aws_cloudwatch_log_group" "ddb_lambda_chatbot" {
+resource "aws_s3_object" "accounts_object_upload" {
+  bucket = aws_s3_bucket.items_bucket.id
+  key    = "accounts.json"
+  source = "lambda/accounts.json"
+  # The filemd5() function is available in Terraform 0.11.12 and later
+  # For Terraform 0.11.11 and earlier, use the md5() function and the file() function:
+  # etag = "${md5(file("path/to/file"))}"
+  etag       = filemd5("lambda/accounts.json")
+  depends_on = [aws_s3_bucket.items_bucket]
+}
+
+
+resource "aws_cloudwatch_log_group" "lambda_log_group" {
   name              = "/aws/lambda/${var.lambda_function_name}"
   retention_in_days = 30
 }

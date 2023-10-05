@@ -20,3 +20,6 @@ variable "bucket_name" {
 variable "SecurityHubAdminAccountId" {
   default = 12345678901
 }
+variable "state_machine_arn" {
+  default = "arn:aws:states:XXXXXXX"
+}

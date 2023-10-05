@@ -44,11 +44,6 @@ def get_controls(enabled_standards, security_hub_client):
             response = security_hub_client.list_security_control_definitions(
                 StandardsArn=standard["StandardsArn"], NextToken=next_token)
             controls[standard["StandardsArn"]] = controls[standard["StandardsArn"]] + response["SecurityControlDefinitions"]
-    # control_data = {}
-    # for key, value in controls.items():
-    #     control_items = [item for item in value if item.get('CurrentRegionAvailability') != 'UNAVAILABLE']
-    #     if control_items:
-    #         control_data[key] = control_items
     removed_items = []
     for key, value in controls.items():
         control_items = [item['SecurityControlId'] for item in value if item.get('CurrentRegionAvailability') != 'UNAVAILABLE']
@@ -68,6 +63,7 @@ sts_client = None
 DISABLED_REASON = "Control disabled because control in DDB but not reason provided."
 DISABLED = "DISABLED"
 ENABLED = "ENABLED"
+dynamodb_client = None
 
 
 def get_control_status(standard_control_association, member_security_hub_client):
@@ -265,7 +261,7 @@ def update_standard_subscription(administrator_enabled_standards, member_enabled
     return standards_changed
 
 
-def get_exceptions(event):
+def get_exceptions(event, region):
     """
     extract exceptions related to the processed account from event. Return dictionary.
     """
@@ -288,7 +284,12 @@ def get_exceptions(event):
 
         try:
             if account_id in exceptions_dict[control]["Enabled"]:
-                enabled = True
+                if "Region" in exceptions_dict[control].keys():
+                    if region not in exceptions_dict[control]["Region"]:
+                        disabled = True
+                        logger.info('%s: is going to be disabled in %s', control, region)
+                else:
+                    enabled = True
         except KeyError:
             logger.info('%s: No "Enabled" exceptions.', control)
 
@@ -314,8 +315,26 @@ def get_exceptions(event):
     return exceptions
 
 
+def convert_regions(response, member_account_id):
+    """
+    Convert Items from DynamoDB into simpler dictionary format
+    """
+    account_regions = dict()
+    for account in response['Items']:
+        account_regions[account["AccountId"]["S"]] = [entry["S"] for entry in account["Regions"]["L"]]
+    if member_account_id in account_regions.keys():
+        return account_regions[member_account_id]
+    else:
+        logger.info("%s not in DDB items", member_account_id)
+
+
 def lambda_handler(event, context):
     logger.info(event)
+
+    global dynamodb_client
+    if not dynamodb_client:
+        dynamodb_client = boto3.client("dynamodb")
+    response = dynamodb_client.scan(TableName=os.environ["RegionsDynamoDB"])
 
     try:
         # set variables and boto3 clients
@@ -327,6 +346,7 @@ def lambda_handler(event, context):
             )
         administrator_account_id = context.invoked_function_arn.split(":")[4]
         member_account_id = event["account"]
+        regions = convert_regions(response, member_account_id)
 
         role_arn = os.environ["MemberRole"].replace("<accountId>", member_account_id)
         global sts_client
@@ -337,7 +357,7 @@ def lambda_handler(event, context):
         )
         credentials = assumed_role_object["Credentials"]
 
-        for region in json.loads(os.environ["DEFAULT_REGIONS"]):
+        for region in regions:
             administrator_security_hub_client = boto3.client("securityhub", config=config,
                                                              region_name=region)
             # Get standard subscription controls
@@ -357,7 +377,6 @@ def lambda_handler(event, context):
             member_enabled_standards = get_enabled_standard_subscriptions(
                 standards, member_account_id, member_security_hub_client, region
             )
-            # print("member_enabled_standards", member_enabled_standards)
             logger.info("Update Account %s in %s region", member_account_id, region)
 
             # Update standard subscriptions in member account
@@ -375,7 +394,7 @@ def lambda_handler(event, context):
             standard_controls = get_controls(member_enabled_standards, member_security_hub_client)
 
             # Get exceptions
-            exceptions = get_exceptions(event)
+            exceptions = get_exceptions(event, region)
             logger.info("Exceptions: %s", str(exceptions))
 
             # Disable/enable the controls in member account
