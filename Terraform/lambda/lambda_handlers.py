@@ -77,7 +77,7 @@ def process_item(items, data, table_name, item_type):
 def get_s3_data(bucket, json_file):
     s3_client = boto3.client('s3')
     items_data = json.loads(s3_client.get_object(
-        Bucket=bucket, Key=str(os.environ["json_file"]))['Body'].read())
+        Bucket=bucket, Key=str(json_file))['Body'].read())
     logger.info(" items_data: %s", items_data)
     return items_data
 

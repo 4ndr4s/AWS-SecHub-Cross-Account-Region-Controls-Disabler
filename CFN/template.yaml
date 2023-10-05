@@ -161,7 +161,7 @@ Resources:
       Timeout: 900
       Environment:
         Variables:
-          MemberRole: !Sub "arn:aws:iam::${SecurityHubAdminAccountId}:role${MemberIAMRolePath}${MemberIAMRoleName}"
+          MemberRole: !Sub "arn:aws:iam::<accountId>:role${MemberIAMRolePath}${MemberIAMRoleName}"
           RegionsDynamoDB: !Ref RegionsDynamoDBTable
 
   SecurityHubMemberUpdateStateMachineRole:

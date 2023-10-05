@@ -21,7 +21,8 @@ data "aws_iam_policy_document" "ddb_lambda_policy_doc" {
          "dynamodb:GetItem",
          "dynamodb:UpdateItem"
     ]
-    resources = ["arn:aws:dynamodb:us-east-1:${var.SecurityHubAdminAccountId}:table/${var.dynamodb_table_arn}"]
+    resources = ["arn:aws:dynamodb:us-east-1:${var.SecurityHubAdminAccountId}:table/${var.items_dynamodb_table}",
+                "arn:aws:dynamodb:us-east-1:${var.SecurityHubAdminAccountId}:table/${var.regions_dynamodb_table}"]
   }
   statement {
     effect = "Allow"
@@ -43,7 +44,7 @@ data "aws_iam_policy_document" "ddb_lambda_policy_doc" {
       "s3:ListBucket"
     ]
 
-    resources = ["arn:aws:s3:::${var.s3_bucket}", "arn:aws:s3:::${var.s3_bucket}/*"]
+    resources = ["${aws_s3_bucket.items_bucket.arn}", "${aws_s3_bucket.items_bucket.arn}/*"]
   }
   statement {
     effect = "Allow"
