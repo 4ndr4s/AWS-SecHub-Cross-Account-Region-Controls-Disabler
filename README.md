@@ -15,7 +15,7 @@
 
 ## Introduction
 
-This repo is based on [aws-security-hub-cross-account-controls-disabler](https://github.com/aws-samples/aws-security-hub-cross-account-controls-disabler) solution with some adittional features:
+This repo is based on [aws-security-hub-cross-account-controls-disabler](https://github.com/aws-samples/aws-security-hub-cross-account-controls-disabler) solution with some adittional features as described [here](https://dev.to/4ndr4s/disable-security-hub-controls-in-an-aws-organization-59jf-temp-slug-4251521?preview=a342149ee58b96950b3dc9533164cb181d7925d62cd276ee5cb3fd9b41c39b1d3a63b4ff7bd0803504c6c59c4f2d78acfdedd72c953ed4e742dbe19e):
 -  Disable global resources control in specific regions.
 - Iterate over multiple regions.
 - Disable/Enable controls across security standards [consolidated controls view and consolidated control findings in AWS Security Hub](https://aws.amazon.com/blogs/security/prepare-for-consolidated-controls-view-and-consolidated-control-findings-in-aws-security-hub/)
