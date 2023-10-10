@@ -24,14 +24,37 @@ This repo is based on [aws-security-hub-cross-account-controls-disabler](https:/
 - Control regions to run per account ID.
 ## Goal
 
-AWS Security Hub allows you to disable controls of security standards such as CIS AWS Foundations controls or AWS Foundational Security Best Practices controls. However, in a multi account setup with a dedicated Security Hub administrator account, there is no native way to disable specific controls globally for all Security Hub member accounts. This project intends to close this gap by propagating the action of enabling or disabling security standards and its controls in the Security Hub administrator account across all of the Security Hub member accounts.
+In this blog, we will explore the process of enabling and disabling controls in [AWS Security Hub](https://docs.aws.amazon.com/securityhub/latest/userguide/what-is-securityhub.html) across multiple accounts within an organization, with a dedicated Security Hub administrator account. Although AWS Security Hub offers control management, there is no native method to globally disable specific controls for all Security Hub member accounts. To address this gap, this project aims to streamline the process by propagating the action of enabling or disabling security standards and their controls from the Security Hub administrator account to all member accounts. 
+
+The solution presented in this blog builds upon an existing [AWS blog](https://aws.amazon.com/blogs/security/disabling-security-hub-controls-in-a-multi-account-environment/) post, enhancing it with the following key features:
+
+- Common ControlID: We introduce the concept of enabling or disabling controls using a common ControlID across enabled standards, effectively resolving the [issue](https://github.com/aws-samples/aws-security-hub-cross-account-controls-disabler/issues/10) of control management.
+
+- Global Controls: We address the challenge of enabling or disabling controls based on [regions](https://github.com/aws-samples/aws-security-hub-cross-account-controls-disabler/issues/11).
+
+- Simplified Account Management: Instead of manually listing all account IDs, we provide a mechanism to enable or disable controls across the organization effortlessly.
+
+- Security Hub Admin Account: We recognize the Security Hub Admin account as a member account.
+
+- Integration with S3 and Lambda function: We implement S3 integration to initiate a State Machine execution whenever a new item is added to the DynamoDB table.
+
+- AccountIds DynamoDB table: For large organizations with different business units is common to use different regions across the account within the organization, for this case we implement a DynamoDB to control regions per account.
 
 ## Overview
 
-The solution consists of the following:
-- A **cross-account IAM role** in the member accounts with the requied Security Hub permissions to disable/enable Security standard controls.
-- An **AWS Step Function state machine** assuming the cross-account IAM role and disable/enable the controls in the member accounts to reflect the setup in the administrator account.
-- A **DynamoDB Table** containing exceptions. The table contains information about which control should be disabled or enabled in which account. This information overrides the configurations fetched from the Security Hub Administrator for the specified acount.
+The proposed solution encompasses the following components:
+
+**Cross-Account IAM Role**: Member accounts are equipped with a cross-account IAM role, granting the necessary Security Hub permissions to enable/disable Security standard controls.
+
+**AWS Step Function State Machine**: This state machine assumes the cross-account IAM role and manages the enablement or disablement of controls in member accounts, ensuring alignment with the DynamoDB exceptions, ensuring the organization's compliance with the enabled standards in the Security Hub admin account.
+
+**DynamoDB Table for Exceptions**: A DynamoDB table contains information about which controls should be enabled or disabled in specific accounts.
+
+**DynamoDB Table for Accounts-Region**: A DynamoDB table contains information about which regions are enable per account.
+
+**S3 Bucket**: An S3 bucket to upload of an [items.json](Terraform/lambda/items.json) file containing exceptions to be added to the DynamoDB table.
+
+**Lambda Function**: This function is triggered when the [items.json](Terraform/lambda/items.json) file is updated in the S3 bucket, ensuring real-time updates to control exceptions in the DynamoDB table and initiating Step Function Machine executions in response to DynamoDB updates.
 
 ![Architecture](img/SecurityHubUpdater.png)
 
@@ -40,24 +63,29 @@ The solution consists of the following:
 ## Setup
 
 ### Requirements
-To deploy this solution, you need
-* [AWS CLI version 2](https://docs.aws.amazon.com/cli/latest/userguide/install-cliv2.html)
-* [AWS SAM CLI](https://docs.aws.amazon.com/serverless-application-model/latest/developerguide/serverless-sam-cli-install.html)
+To deploy this solution, you need:
+
+- [AWS CLI V2](https://docs.aws.amazon.com/cli/latest/userguide/getting-started-install.html)
+- [AWS SAM CLI](https://docs.aws.amazon.com/serverless-application-model/latest/developerguide/install-sam-cli.html)
+- [Terraform](https://developer.hashicorp.com/terraform/tutorials/aws-get-started/install-cli)
 
 Also, make sure that one of the AWS accounts is designated as the [Security Hub administrator account](https://docs.aws.amazon.com/securityhub/latest/userguide/securityhub-accounts.html).
 
 ### Member Accounts
-Deploy the cross-account IAM role defined in [member-iam-role/template.yaml](member-iam-role/template.yaml) in all member accounts.  
-For `SecurityHubAdminAccountId`, set the Account ID of the Security Hub administrator account.
+Deploy the cross-account IAM role defined in [member-iam-role/template.yaml](member-iam-role/template.yaml) in all member accounts.
+For *SecurityHubAdminAccountId*, set the Account ID of the Security Hub administrator account.
 
 #### Deployment
+Replace *my-stackset* and *AccountID* with the desired value and create the stack-set.
 
-Set an arbitrary `<stack-name>` and the Security Hub administrator account ID for `<AccountId>` and execute following command in a Security Hub member account: 
 ```
-aws cloudformation deploy --template-file member-iam-role/template.yaml --capabilities CAPABILITY_NAMED_IAM --stack-name <stack-name> --parameter-overrides SecurityHubAdminAccountId=<AccountID>
+aws cloudformation create-stack-set \
+--stack-set-name <my-stackset> \
+--template-body file://member-iam-role/template.yaml \
+--capabilities CAPABILITY_NAMED_IAM \
+--call-as DELEGATED_ADMIN --permission-model SERVICE_MANAGED\ --auto-deployment Enabled=true,RetainStacksOnAccountRemoval=false \
+--parameters ParameterKey=SecurityHubAdminAccountId,ParameterValue=<AccountID>
 ```
-
-For a more efficient deployment to multiple member accounts at once, [AWS CloudFormation StackSets](https://docs.aws.amazon.com/AWSCloudFormation/latest/UserGuide/what-is-cfnstacksets.html) can be used.
 
 #### Parameters
 | Name                      | Description                                                                                       | Default                        |
@@ -66,20 +94,33 @@ For a more efficient deployment to multiple member accounts at once, [AWS CloudF
 | IAMRolePath               | Path for IAM Role - this must match the `MemberIAMRolePath` parameter in the `UpdateMembers` stack. | /                      |
 | IAMRoleName               | Name of IAM Role - this must match the `MemberIAMRoleName` parameter in the `UpdateMembers` stack.    | securityhub-UpdateControl-role |
 
+Create the stack instances, replace the *ORG-ID* with the desired OU-ID, if you want to deploy at organization level use your root OU-ID.
+
+```
+aws cloudformation create-stack-instances --stack-set-name my-stackset \
+--deployment-targets OrganizationalUnitIds='["ORG-ID"]' \
+--regions '["us-east-1"]'  --call-as DELEGATED_ADMIN \
+--operation-preferences FailureTolerancePercentage=100,MaxConcurrentCount=20
+```
+
 ### Security Hub administrator account
-Deploy the state machine defined in [UpdateMembers/template.yaml](UpdateMembers/template.yaml)
+
+#### SAM
+
+Deploy the state machine described in [CFN/template.yaml](CFN/template.yaml).
 
 #### Prerequisites
-Since [UpdateMembers/template.yaml](UpdateMembers/template.yaml) is using the [Serverless transformation](https://docs.aws.amazon.com/AWSCloudFormation/latest/UserGuide/transform-aws-serverless.html), you need to have an artifact bucket in the Security Hub administrator account. The following command creates such a bucket with the name `<artifact-bucket>`:
+Before proceeding with the [CFN/template.yaml](CFN/template.yaml) file, which utilizes the [Serverless transformation](https://docs.aws.amazon.com/AWSCloudFormation/latest/UserGuide/transform-aws-serverless.html), it is essential to set up an artifact bucket within the Security Hub administrator account. To create this artifact bucket, you can use the following command, specifying your chosen name for the bucket as *<artifact-bucket>*:
+
 ```
 aws s3 mb s3://<artifact-bucket>
 ```
 
 #### Deployment
-The artifact bucket created in the preqrequisites is referenced by `<artifact-bucket>` in the code below. Chose an arbitrary `<stack-name>` and execute following commands to deploy the [UpdateMembers/template.yaml](UpdateMembers/template.yaml):
+The artifact bucket created in the preqrequisites is referenced by `<artifact-bucket>` in the code below. Chose an arbitrary `<stack-name>` and execute following commands to deploy the [CFN/template.yaml](CFN/template.yaml):
 ```
-sam package --template-file UpdateMembers/template.yaml --output-template-file UpdateMembers/template-out.yaml --s3-bucket <artifact-bucket>
-aws cloudformation deploy --template-file UpdateMembers/template-out.yaml --capabilities CAPABILITY_IAM --stack-name <stack-name>
+sam package --template-file CFN/template.yaml --output-template-file CFN/template-out.yaml --s3-bucket <artifact-bucket>
+aws cloudformation deploy --template-file CFN/template-out.yaml --capabilities CAPABILITY_IAM --stack-name <stack-name> --parameter-overrides SecurityHubAdminAccountId=<AccountID>
 ```
 
 #### Parameters
@@ -90,94 +131,155 @@ aws cloudformation deploy --template-file UpdateMembers/template-out.yaml --capa
 | MemberIAMRoleName         | Name of IAM Role in member account - this must match the `IAMRoleName` parameter in the `memeber-iam-role` stack.   | securityhub-UpdateControl-role |
 | Path                      | Path of IAM LambdaExecution Roles                                                                            | /                      |
 | EventTriggerState                      | The state of the SecurityHubUpdateEvent rule monitoring Security Hub control updates and triggering the state machine                                                                            | DISABLED                      |
+| SecurityHubAdminAccountId | Account ID of SecurityHub administrator Account                   | *None*  
 | NotificationEmail1                      | Optional - E-mail address to receive notification if the state machine fails.  |                       |
 | NotificationEmail2                      | Optional - E-mail address to receive notification if the state machine fails.  |                       |
 | NotificationEmail3                      | Optional - E-mail address to receive notification if the state machine fails.  |                       |
 
+#### Terraform
+
+To deploy this solution, navigate to the terraform folder, where you will find the necessary configurations to set up the solution. This includes the creation of an S3 bucket and a Lambda function, which plays a pivotal role in updating the DynamoDB table each time a new JSON file containing control status information is uploaded to the S3 bucket.
+
+
+```
+## terraform initialization
+terraform init
+
+## Execute the plan to evaluate changes
+terraform plan
+
+## execute apply
+terraform apply
+```
 
 ## Usage
-After deployment, the solution runs automatically based on the following two triggers:
-* Scheduled Trigger  
-  The timeframe, when the state machine is triggered on a scheduled basis, can be defined by the `Schedule` parameter. The default value is `rate(1 day)`. You can use scheduling expressions as described here: https://docs.aws.amazon.com/eventbridge/latest/userguide/eb-create-rule-schedule.html.  
-  The Scheduled Trigger makes sure, that new accounts are updated by this solution after they get added as a Security Hub member account. Also, it propagates the status of the controls which were already disabled before the solutions was deployed to all existing member accounts.
-* Event Trigger  
-  The state machine is triggered each time a control is disabled/enabled in the Security Hub administrator account. The state of the Event Trigger can be controlled by the `EventTriggerState` parameter during deployment.  
-  ***Limitation***: *If a lot of controls are changed in a very short timeframe (e.g. when done programmatically via [Security Hub Controls CLI](https://github.com/aws-samples/aws-security-hub-controls-cli)), the Event Trigger causes multiple parallel executions which may lead to API throttling and thus failure of the execution.*
+Once the deployment is complete, the solution operates automatically, driven by the following triggers:
+##### Scheduled Trigger
+
+The Scheduled Trigger operates based on a predefined schedule, which can be customized using the Schedule parameter. By default, it runs daily. You have the flexibility to employ scheduling expressions as detailed in the AWS documentation [here](https://docs.aws.amazon.com/eventbridge/latest/userguide/eb-create-rule-schedule.html).
+The Scheduled Trigger serves a dual purpose: it ensures that newly added accounts are promptly updated as Security Hub member accounts and propagates the status of controls that were previously disabled even before the solution deployment to all existing member accounts.
+
+##### Event Trigger
+
+The Event Trigger activates each time a control is disabled or enabled in the Security Hub administrator account. The behavior of the Event Trigger can be controlled via the EventTriggerState parameter, which can be set during the deployment process.
+Limitation: If a lot of controls are changed in a very short timeframe (e.g. when done programmatically via Security Hub Controls CLI), the Event Trigger causes multiple parallel executions which may lead to API throttling and thus failure of the execution.
+
+For specific cases where reflecting the control status of the admin account in member accounts is unnecessary, we have chosen to disable this trigger.
+
+##### DynamoDB update events
+
+The state machine is triggered after a file is updated or a new item or added in the S3 Bucket.
 
 ### Setting exceptions
-The DynamoDB table deployed in the SecurityHub administrator account can be filled with exceptions. If an exception is defined for an account, the account will be updated as specified in the exception instead of reflecting the configuration in the SecurityHub Administrator account.
+Exceptions are managed through the DynamoDB table deployed in the SecurityHub administrator account. Each individual element within this table represents an exception. Every exception should include at least one AWS account associated with it.
 
-#### Schema
-| Field names | ControlId                                                                         | Disabled                                                  | Enabled                                                  | DisabledReason                                                                                                                               |
-|-------------|-----------------------------------------------------------------------------------|-----------------------------------------------------------|----------------------------------------------------------|-----------------------------------------------------------------------------------------------------------------------------------------------|
-| Description | The ControlId for which an exception should be defined. Primary key of the table. | List of accounts for which the Control should be disabled | List of accounts for which the Control should be enabled | `DisabledReason` to be specified in the `update_standards_control` API call when disabling a control. If omitted, "Exception" is used as default. |
-| Type        | String                                                                            | List of Strings                                           | List of Strings                                          | String                                                                                                                                        |
-| Example     | `CIS.1.1`                                                                         | `[ { "S" : "111111111111" } ]`                            | `[ { "S" : "222222222222" }  ]`                          | `Some_Reason`                                                                                                                                 |
-#### Update DynamoDB table
-To create an exception, an item in the DynamoDB table needs to be created. The following JSON object creates an exception for control `CIS.1.1`:
+Here's how the process works:
+
+**Adding or Updating Exceptions**: Whenever a new exception is added or an existing one is updated, a Lambda function is invoked. This Lambda function, in turn, initiates the execution of a new State Machine.
+
+
+To add exceptions edit the json file [items.json](Terraform/lambda/items.json), for guidance and reference, you may consult the [items.json.template](Terraform/lambda/items.json.template) file.
+
+
+The following json object is an extraction of the [items.json](Terraform/lambda/items.json), for guidance and reference, you may consult the [items.json.template](Terraform/lambda/items.json.template) file:
+
 ```
-{
- "ControlId": {
-  "S": "CIS.1.1"
- },
- "Disabled": {
-  "L": [
-   {
-    "S": "11111111111"
-   }
+  {
+    "ControlId": "CloudTrail.5",
+    "Disabled": [ "ALL" ],
+    "DisabledReason": "We are not monitoring CT at Organization level, Jira Ticket XXX-01"
+  },
+  {
+    "ControlId": "CloudTrail.6",
+    "Disabled": ["123456789012", "123456789089", "123456789076"],
+    "DisabledReason": "We are not monitoring CT at Organization level, Jira Ticket XXX-02"
+  },
+  {
+      "ControlId": "IAM.9",
+      "Enabled": ["ALL"],
+      "DisabledReason": "Global resource control, should be enabled only in us-east-1, Jira Ticket XXX-03",
+      "Region": ["us-east-1"]
+  }
+
+
+```
+
+**Adding Organization-Wide Exceptions**: When adding an exception that applies to the entire organization, you can streamline the process by simply using the keyword "ALL". This eliminates the need to list individual accounts, making exception management more efficient and less error-prone.
+
+**Disabling Global Controls**: To disable a global control, the key step is to use the "Enabled" parameter while specifying the region within which this control should be enabled. For example:
+
+
+```
+## Disable IAM.9 in all regions but us-east-1
+  {
+      "ControlId": "IAM.9",
+      "Enabled": ["ALL"],
+      "DisabledReason": "Global resource control, should be enabled only in us-east-1, Jira Ticket XXX-03",
+      "Region": ["us-east-1"]
+  }
+```
+
+**Implementing exceptions**: Once you've made updates to an element within the [items.json](Terraform/lambda/items.json) file and wish to apply these alterations, follow these steps:
+
+- Save your modifications within the [items.json](Terraform/lambda/items.json) file.
+- execute below terraform commands:
+
+
+```
+## Execute the plan to evaluate changes
+terraform plan
+
+## execute apply
+terraform apply
+```
+**Adding or Updating Accounts**: Whenever a new account is added or an existing one is updated, a Lambda function is invoked. This Lambda function, in turn, initiates the execution of a new State Machine, to update or add accounts and regions update [accounts.json](Terraform/lambda/accounts.json) file as described below.
+
+```
+[
+    {
+      "AccountId": "123456789012",
+      "Regions": [
+        "ap-northeast-1",
+        "ap-northeast-2",
+        "ap-northeast-3",
+        "ap-south-1",
+        "ap-southeast-1",
+        "ap-southeast-2",
+        "ca-central-1",
+        "eu-central-1",
+        "eu-north-1",
+        "eu-west-1",
+        "eu-west-2",
+        "eu-west-3",
+        "sa-east-1",
+        "us-east-2",
+        "us-west-1",
+        "us-west-2",
+        "us-east-1"
+      ]
+    },
+    {
+      "AccountId": "123456789012",
+      "Regions": [
+        "us-east-2",
+        "us-west-1",
+        "us-west-2",
+        "us-east-1"
+      ]
+    }
   ]
- },
- "Enabled": {
-  "L": [
-   {
-    "S": "22222222222"
-   }
-  ]
- },
- "DisabledReasod": {
-  "S": "Some_Reason"
- }
-}
 ```
 
-This JSON object can either be put via the AWS Console or via the AWS CLI. The following AWS CLI command creates an item in the DynamoDB table `<DynamoDB-table-name>`:
-```
-aws dynamodb put-item --table-name <DynamoDB-table-name> --item '{ "ControlId": { "S": "CIS.1.1" }, "Disabled": { "L": [ { "S": "11111111111" } ] }, "Enabled": { "L": [ { "S": "22222222222" } ] }, "DisabledReasod": { "S": "Some_Reason" } } '
-```
-The DynamoDB table name can be found in the Outputs section of the CloudFormation stack in the SecurityHub administrator account under the name `AccountExceptionsDynamoDBTableName`. It can also be retrieved with the following AWS CLI command:
-```
-aws cloudformation describe-stacks --query "Stacks[].Outputs[?OutputKey=='AccountExceptionsDynamoDBTableName'].OutputValue" --output text
-```
+After saving your changes run terraform plan and apply again.
 
-#### Example
-In this section, the evaluation logic is explained using the following example: 
-![Exception](img/DynamoDB_exceptions.png)
-* CIS.1.1 will be disabled for account `11111111111`, overriding the information fetched from the SecurityHub administrator. No exceptions are defined to enable this control. `Some_Reason` will be specified in the `update_standards_control` API call when disabling this control for account `11111111111`.
-* CIS.1.2 will be enabled for account `11111111111`, overriding the information fetched from the SecurityHub administrator. No exceptions are defined to disable this control.
-* CIS.1.3 will be enabled for account `22222222222`, overriding the information fetched from the SecurityHub administrator. No exceptions are defined to disable this control. The empty entry in `Disabled` has the same effect as an empty list (`[]`).
-* CIS.1.4 will be disabled for account `22222222222`, overriding the information fetched from the SecurityHub administrator. No exceptions are defined to enabled this control. `Exception` will be specified in the `update_standards_control` API call when disabling this control for account `22222222222`, since no explicit `DisabledReason` was given.
-* CIS.1.5 specifies the same account in both, `Disabled` and `Enabled` list. This is a conflict and the exception will be ignored. A warning will be logged in the `UpdateMembers` Lambda function and the control for the account `22222222222` will be set as specified in the SecurityHub administrator as a fallback.
-* Any other account and control will be set as specified in the SecurityHub administrator.
+## Conclusion
 
-### Security Hub Controls CLI
-[Security Hub Controls CLI](https://github.com/aws-samples/aws-security-hub-controls-cli) is a CLI tool to disable and enable security standards controls in AWS Security Hub. It also supports the exception handling described [here](#setting-exceptions).
+In this blog, you learned how to disable some controls across multiple accounts within organization. we showed how the controls can quickly be disabled or enabled using the solution described. This project provide a solution to disable controls across different standards using a common controlID besides giving the option to disable controls for global resources. 
+
+We also introduced a DynamoDb table to control regions per account, this additional feature is useful for large organizations with multiple business unit that requires different enabled regions per account.
+
+If you have feedback about this post, submit comments in the Comments section below. If you have trouble with the solution, please open an issue in GitHub.
 
 ## Workflow and Troubleshooting
 
 Since the solution is implemented via AWS Step Functions state machine, each execution can be inspected in the AWS Step Functions state machine dashboard.
-
-A **successfull** execution can be seen in the following picture:  
-![Successfull](img/Successfull_execution.png)
-
-A **failed** execution can be seen in the following picture:  
-![Failed](img/Failed_execution.png)
-
-An execution can fail, for example, if the cross-acccount IAM Role is not deployed in the member account or any other `ClientError` is raised in the `UpdateMember` Lambda function.
-
-In that case, a message is published to the SNS topic in the `SendSNS` step, containing information about which accounts were not updated successfully and providing the according error message per account. E-Mail addresses receiving the message can be set during deployment via the `NotificationEmail*` parameters.  
-The same information can be inspected in the the state machine logs. You find this information for example in the *Step Input* section of the *PipelineFailed* step as seen in the following picture:  
-![Failed inpsection](img/Failed_execution_inspection.png)
-
-## Customization
-
-It may be desired to change or add other subscription types into the SNS topic. The sections to be changed for that are marked with `# TODO - Subscriptions` in the [UpdateMembers/template.yaml](UpdateMembers/template.yaml) file.
