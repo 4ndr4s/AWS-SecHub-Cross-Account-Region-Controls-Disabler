@@ -56,7 +56,7 @@ The proposed solution encompasses the following components:
 
 **Lambda Function**: This function is triggered when the [items.json](Terraform/lambda/items.json) file is updated in the S3 bucket, ensuring real-time updates to control exceptions in the DynamoDB table and initiating Step Function Machine executions in response to DynamoDB updates.
 
-![Architecture](img/SecurityHubUpdater.png)
+![Architecture](images/SecurityHubUpdater.png)
 
 
 
